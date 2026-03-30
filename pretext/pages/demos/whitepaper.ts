@@ -187,9 +187,9 @@ const preparedIntro2 = prepareWithSegments(INTRO_P2, BODY_FONT)
 function render(): void {
   poolCursor = 0
 
-  const viewWidth = document.documentElement.clientWidth
-  const contentWidth = Math.min(MAX_CONTENT_WIDTH, viewWidth - MIN_MARGIN * 2)
-  const marginLeft = Math.round((viewWidth - contentWidth) / 2)
+  const stageWidth = stage.clientWidth
+  const contentWidth = Math.min(MAX_CONTENT_WIDTH, stageWidth - MIN_MARGIN * 2)
+  const marginLeft = Math.round((stageWidth - contentWidth) / 2)
 
   let y = 52
 

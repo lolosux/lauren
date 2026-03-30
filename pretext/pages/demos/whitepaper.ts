@@ -2,8 +2,9 @@
   Whitepaper page for "Confidential Data Rails" — laid out with Pretext.
 
   All body text (abstract, introduction) is measured and line-broken by Pretext's
-  layoutNextLine(). A draggable image acts as an obstacle — text reflows around it
-  live as you drag.
+  layoutNextLine(). A draggable image acts as an obstacle — text reflows around
+  BOTH sides of it live as you drag, splitting lines in half when the image is
+  in the center.
 */
 import {
   prepareWithSegments,
@@ -46,6 +47,7 @@ const PARAGRAPH_INDENT = 28
 const MAX_CONTENT_WIDTH = 540
 const MIN_MARGIN = 48
 const IMAGE_PADDING = 14
+const MIN_SLOT_WIDTH = 40
 
 // ─── Obstacle state ────────────────────────────────────────────────────────────
 
@@ -55,6 +57,7 @@ const imageObs: Obstacle = { x: 0, y: 0, width: DISPLAY_WIDTH, height: DISPLAY_W
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
 type PositionedLine = { x: number; y: number; text: string; width: number }
+type Slot = { x: number; width: number }
 
 // ─── DOM ───────────────────────────────────────────────────────────────────────
 
@@ -62,7 +65,6 @@ const stage = document.getElementById('stage')!
 const linePool: HTMLElement[] = []
 let poolCursor = 0
 
-// Create the draggable image (outside the pool so it persists across renders)
 const blobImg = document.createElement('img')
 blobImg.src = BLOB_IMAGE_SRC
 blobImg.className = 'wp-blob'
@@ -105,47 +107,54 @@ function placeEl(el: HTMLElement, x: number, y: number, width: number): HTMLElem
   return el
 }
 
-// ─── Obstacle-aware line layout ────────────────────────────────────────────────
+// ─── Multi-slot line layout (text flows on BOTH sides of obstacle) ─────────────
 
-function getSlot(
+function getSlotsForLine(
   baseX: number,
   y: number,
   lineHeight: number,
   fullWidth: number,
-): { x: number; width: number } {
-  let left = baseX
-  let right = baseX + fullWidth
-
+): Slot[] {
+  const left = baseX
+  const right = baseX + fullWidth
   const obs = imageObs
   const bandTop = y
   const bandBottom = y + lineHeight
 
-  // Check if this line band overlaps the obstacle vertically
-  if (bandBottom > obs.y - IMAGE_PADDING && bandTop < obs.y + obs.height + IMAGE_PADDING) {
-    const obsLeft = obs.x - IMAGE_PADDING
-    const obsRight = obs.x + obs.width + IMAGE_PADDING
-
-    // How much space on the left vs right of the obstacle
-    const leftSpace = Math.max(0, obsLeft - left)
-    const rightSpace = Math.max(0, right - obsRight)
-
-    if (leftSpace >= rightSpace && leftSpace > 40) {
-      // More room on the left — text goes left, obstacle clips the right
-      right = Math.min(right, obsLeft)
-    } else if (rightSpace > 40) {
-      // More room on the right — text goes right, obstacle clips the left
-      left = Math.max(left, obsRight)
-    } else {
-      // Obstacle covers nearly all the width — squeeze into whatever is bigger
-      if (leftSpace >= rightSpace) {
-        right = Math.min(right, obsLeft)
-      } else {
-        left = Math.max(left, obsRight)
-      }
-    }
+  // No vertical overlap with obstacle — full width
+  if (
+    obs.width <= 0 ||
+    bandBottom <= obs.y - IMAGE_PADDING ||
+    bandTop >= obs.y + obs.height + IMAGE_PADDING
+  ) {
+    return [{ x: left, width: right - left }]
   }
 
-  return { x: left, width: Math.max(right - left, 30) }
+  const obsLeft = obs.x - IMAGE_PADDING
+  const obsRight = obs.x + obs.width + IMAGE_PADDING
+
+  // Obstacle is entirely outside the content area
+  if (obsRight <= left || obsLeft >= right) {
+    return [{ x: left, width: right - left }]
+  }
+
+  const slots: Slot[] = []
+
+  // Left slot (content left edge → obstacle left edge)
+  const leftSlotWidth = obsLeft - left
+  if (leftSlotWidth >= MIN_SLOT_WIDTH) {
+    slots.push({ x: left, width: leftSlotWidth })
+  }
+
+  // Right slot (obstacle right edge → content right edge)
+  const rightSlotWidth = right - obsRight
+  if (rightSlotWidth >= MIN_SLOT_WIDTH) {
+    slots.push({ x: obsRight, width: rightSlotWidth })
+  }
+
+  // If obstacle covers nearly everything, return whatever we found
+  // If nothing viable, return empty (line will be skipped)
+  return slots
 }
 
 function layoutParagraph(
@@ -160,22 +169,50 @@ function layoutParagraph(
   let cursor: LayoutCursor = { segmentIndex: 0, graphemeIndex: 0 }
   let y = startY
   let isFirst = true
+  let done = false
 
-  while (true) {
-    const { x, width } = getSlot(baseX, y, lineHeight, fullWidth)
-    const lineIndent = isFirst ? indent : 0
-    const effectiveWidth = width - lineIndent
-    if (effectiveWidth < 30) {
-      // Obstacle covers this line — skip down
+  while (!done) {
+    const slots = getSlotsForLine(baseX, y, lineHeight, fullWidth)
+
+    if (slots.length === 0) {
+      // Obstacle covers the entire line band — skip down
       y += lineHeight
       continue
     }
-    const line = layoutNextLine(prepared, cursor, effectiveWidth)
-    if (line === null) break
-    lines.push({ x: x + lineIndent, y, text: line.text, width: line.width })
-    cursor = line.end
+
+    let anyFilled = false
+
+    for (let i = 0; i < slots.length; i++) {
+      const slot = slots[i]
+      const lineIndent = (isFirst && i === 0) ? indent : 0
+      const effectiveWidth = slot.width - lineIndent
+
+      if (effectiveWidth < MIN_SLOT_WIDTH) continue
+
+      const line = layoutNextLine(prepared, cursor, effectiveWidth)
+      if (line === null) {
+        done = true
+        break
+      }
+
+      lines.push({
+        x: slot.x + lineIndent,
+        y,
+        text: line.text,
+        width: line.width,
+      })
+      cursor = line.end
+      anyFilled = true
+      isFirst = false
+    }
+
+    if (!anyFilled && !done) {
+      // Couldn't fit text in any slot on this line
+      y += lineHeight
+      continue
+    }
+
     y += lineHeight
-    isFirst = false
   }
 
   return { lines, endY: y }
@@ -242,7 +279,7 @@ function render(): void {
   placeEl(abstractHeader, marginLeft, y, contentWidth)
   y += 30
 
-  // ── Abstract body (Pretext-powered) ──
+  // ── Abstract body (Pretext-powered, multi-slot) ──
   const absResult = layoutParagraph(
     preparedAbstract, marginLeft, y, contentWidth, BODY_LINE_HEIGHT, PARAGRAPH_INDENT,
   )
@@ -332,9 +369,9 @@ function setInitialImagePosition(): void {
   const stageWidth = stage.clientWidth
   const contentWidth = Math.min(MAX_CONTENT_WIDTH, stageWidth - MIN_MARGIN * 2)
   const marginLeft = Math.round((stageWidth - contentWidth) / 2)
-  // Place on the right side, clearly overlapping the abstract text
-  imageObs.x = marginLeft + contentWidth - imageObs.width + 5
-  imageObs.y = 360
+  // Place in the center-right of the abstract area
+  imageObs.x = marginLeft + contentWidth - imageObs.width - 20
+  imageObs.y = 380
 }
 
 blobImg.addEventListener('mousedown', (e: MouseEvent) => {
@@ -342,7 +379,6 @@ blobImg.addEventListener('mousedown', (e: MouseEvent) => {
   const stageRect = stage.getBoundingClientRect()
   dragOffsetX = e.clientX - stageRect.left - imageObs.x
   dragOffsetY = e.clientY - stageRect.top - imageObs.y
-  blobImg.style.cursor = 'grabbing'
   e.preventDefault()
 })
 
@@ -357,7 +393,6 @@ document.addEventListener('mousemove', (e: MouseEvent) => {
 document.addEventListener('mouseup', () => {
   if (!dragging) return
   dragging = false
-  blobImg.style.cursor = 'grab'
 })
 
 // Touch support
@@ -386,7 +421,6 @@ document.addEventListener('touchend', () => {
 
 // ─── Init ──────────────────────────────────────────────────────────────────────
 
-// Wait for the image to load so we know its real dimensions
 function initAfterImageLoad(): void {
   if (blobImg.naturalWidth > 0 && blobImg.naturalHeight > 0) {
     const aspect = blobImg.naturalHeight / blobImg.naturalWidth
@@ -401,7 +435,6 @@ if (blobImg.complete && blobImg.naturalWidth > 0) {
   initAfterImageLoad()
 } else {
   blobImg.addEventListener('load', initAfterImageLoad)
-  // If image fails to load, still render the page without it
   blobImg.addEventListener('error', () => {
     imageObs.width = 0
     imageObs.height = 0

@@ -448,7 +448,7 @@ function onImageReady(index: number): void {
 
 for (let i = 0; i < blobImgs.length; i++) {
   const img = blobImgs[i]
-  if (img.complete && img.naturalWidth > 0) {
+  if (img.complete) {
     onImageReady(i)
   } else {
     img.addEventListener('load', () => onImageReady(i))

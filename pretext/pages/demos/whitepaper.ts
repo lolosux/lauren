@@ -33,30 +33,9 @@ const INTRO_P1 = `Earlier this year, Story[1] was launched as a scalable layer 1
 
 const INTRO_P2 = `Story uses a novel multi-core architecture where a main EVM-compatible core automatically triggers a collection of specialized cores for enhanced performance. For instance, the IP Core, the first specialized core on Story, handles IP registration, licensing, and tracking derivative works through large and complex IP webs with thousands of connections. It`
 
-// ─── Blob image (inline SVG) ──────────────────────────────────────────────────
+// ─── Blob image ───────────────────────────────────────────────────────────────
 
-const BLOB_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 220 170">
-  <defs>
-    <linearGradient id="bg" x1="0.2" y1="0" x2="0.8" y2="1">
-      <stop offset="0%" stop-color="#edf8fb"/>
-      <stop offset="40%" stop-color="#dff0f6"/>
-      <stop offset="100%" stop-color="#f2f7f9"/>
-    </linearGradient>
-    <filter id="sh"><feDropShadow dx="0" dy="3" stdDeviation="4" flood-opacity="0.12"/></filter>
-  </defs>
-  <g filter="url(#sh)">
-    <path d="M108,22 C128,8 158,18 164,42 C180,32 200,50 188,70
-             C204,82 196,104 176,106 C182,122 164,140 146,134
-             C138,150 118,158 106,146 C92,158 72,150 66,134
-             C48,140 32,122 40,106 C22,104 16,82 32,70
-             C20,50 42,32 58,42 C62,18 88,8 108,22Z"
-          fill="url(#bg)" stroke="#c8dae0" stroke-width="1.5"/>
-  </g>
-  <text x="110" y="98" text-anchor="middle" font-size="32"
-        font-family="Arial,sans-serif" fill="#555" font-weight="bold">&gt;\u0414&lt;</text>
-</svg>`
-
-const BLOB_DATA_URI = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(BLOB_SVG)
+const BLOB_IMAGE_SRC = 'ippy.png'
 
 // ─── Typography ────────────────────────────────────────────────────────────────
 
@@ -85,7 +64,7 @@ let poolCursor = 0
 
 // Create the draggable image (outside the pool so it persists across renders)
 const blobImg = document.createElement('img')
-blobImg.src = BLOB_DATA_URI
+blobImg.src = BLOB_IMAGE_SRC
 blobImg.className = 'wp-blob'
 blobImg.draggable = false
 stage.appendChild(blobImg)

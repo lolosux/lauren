@@ -2,8 +2,8 @@
   Whitepaper page for "Confidential Data Rails" — laid out with Pretext.
 
   All body text (abstract, introduction) is measured and line-broken by Pretext's
-  layoutNextLine(), so we can later drop in image obstacles and have text reflow
-  around them live. Header elements (title, authors, etc.) are statically placed.
+  layoutNextLine(). A draggable image acts as an obstacle — text reflows around it
+  live as you drag.
 */
 import {
   prepareWithSegments,
@@ -33,6 +33,31 @@ const INTRO_P1 = `Earlier this year, Story[1] was launched as a scalable layer 1
 
 const INTRO_P2 = `Story uses a novel multi-core architecture where a main EVM-compatible core automatically triggers a collection of specialized cores for enhanced performance. For instance, the IP Core, the first specialized core on Story, handles IP registration, licensing, and tracking derivative works through large and complex IP webs with thousands of connections. It`
 
+// ─── Blob image (inline SVG) ──────────────────────────────────────────────────
+
+const BLOB_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 220 170">
+  <defs>
+    <linearGradient id="bg" x1="0.2" y1="0" x2="0.8" y2="1">
+      <stop offset="0%" stop-color="#edf8fb"/>
+      <stop offset="40%" stop-color="#dff0f6"/>
+      <stop offset="100%" stop-color="#f2f7f9"/>
+    </linearGradient>
+    <filter id="sh"><feDropShadow dx="0" dy="3" stdDeviation="4" flood-opacity="0.12"/></filter>
+  </defs>
+  <g filter="url(#sh)">
+    <path d="M108,22 C128,8 158,18 164,42 C180,32 200,50 188,70
+             C204,82 196,104 176,106 C182,122 164,140 146,134
+             C138,150 118,158 106,146 C92,158 72,150 66,134
+             C48,140 32,122 40,106 C22,104 16,82 32,70
+             C20,50 42,32 58,42 C62,18 88,8 108,22Z"
+          fill="url(#bg)" stroke="#c8dae0" stroke-width="1.5"/>
+  </g>
+  <text x="110" y="98" text-anchor="middle" font-size="32"
+        font-family="Arial,sans-serif" fill="#555" font-weight="bold">&gt;\u0414&lt;</text>
+</svg>`
+
+const BLOB_DATA_URI = 'data:image/svg+xml;base64,' + btoa(BLOB_SVG)
+
 // ─── Typography ────────────────────────────────────────────────────────────────
 
 const BODY_FONT = '16px "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif'
@@ -40,22 +65,13 @@ const BODY_LINE_HEIGHT = 23
 const PARAGRAPH_INDENT = 28
 const MAX_CONTENT_WIDTH = 540
 const MIN_MARGIN = 48
+const IMAGE_PADDING = 14
 
-// ─── Obstacle state (for later image wrapping) ────────────────────────────────
+// ─── Obstacle state ────────────────────────────────────────────────────────────
 
 type Obstacle = { x: number; y: number; width: number; height: number }
-const obstacles: Obstacle[] = []
-
-// Expose globally so obstacles can be added from the console for testing:
-//   addObstacle({ x: 340, y: 600, width: 200, height: 160 })
-;(window as any).addObstacle = (obs: Obstacle) => {
-  obstacles.push(obs)
-  render()
-}
-;(window as any).clearObstacles = () => {
-  obstacles.length = 0
-  render()
-}
+const imageObs: Obstacle = { x: 0, y: 0, width: 160, height: 130 }
+const obstacles: Obstacle[] = [imageObs]
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -66,6 +82,13 @@ type PositionedLine = { x: number; y: number; text: string; width: number }
 const stage = document.getElementById('stage')!
 const linePool: HTMLElement[] = []
 let poolCursor = 0
+
+// Create the draggable image (outside the pool so it persists across renders)
+const blobImg = document.createElement('img')
+blobImg.src = BLOB_DATA_URI
+blobImg.className = 'wp-blob'
+blobImg.draggable = false
+stage.appendChild(blobImg)
 
 function acquire(tag: string, className: string): HTMLElement {
   let el: HTMLElement
@@ -117,23 +140,22 @@ function getSlot(
   for (const obs of obstacles) {
     const bandTop = y
     const bandBottom = y + lineHeight
-    // skip if obstacle doesn't overlap this line band
-    if (bandBottom <= obs.y || bandTop >= obs.y + obs.height) continue
+    if (bandBottom <= obs.y - IMAGE_PADDING || bandTop >= obs.y + obs.height + IMAGE_PADDING) continue
 
-    if (obs.x <= left) {
-      // obstacle covers the left edge — push text right
-      left = Math.max(left, obs.x + obs.width + 12)
-    } else if (obs.x + obs.width >= right) {
-      // obstacle covers the right edge — shrink text
-      right = Math.min(right, obs.x - 12)
+    const obsLeft = obs.x - IMAGE_PADDING
+    const obsRight = obs.x + obs.width + IMAGE_PADDING
+
+    if (obsLeft <= left) {
+      left = Math.max(left, obsRight)
+    } else if (obsRight >= right) {
+      right = Math.min(right, obsLeft)
     } else {
-      // obstacle in the middle — take the wider side
-      const leftGap = obs.x - 12 - left
-      const rightGap = right - (obs.x + obs.width + 12)
+      const leftGap = obsLeft - left
+      const rightGap = right - obsRight
       if (leftGap >= rightGap) {
-        right = obs.x - 12
+        right = obsLeft
       } else {
-        left = obs.x + obs.width + 12
+        left = obsRight
       }
     }
   }
@@ -159,7 +181,6 @@ function layoutParagraph(
     const lineIndent = isFirst ? indent : 0
     const effectiveWidth = width - lineIndent
     if (effectiveWidth < 40) {
-      // slot too narrow (obstacle), skip this line band
       y += lineHeight
       continue
     }
@@ -294,21 +315,92 @@ function render(): void {
   placeEl(pageNumEl, marginLeft, y, contentWidth)
   y += 40
 
+  // ── Update blob image position ──
+  blobImg.style.left = `${imageObs.x}px`
+  blobImg.style.top = `${imageObs.y}px`
+  blobImg.style.width = `${imageObs.width}px`
+  blobImg.style.height = `${imageObs.height}px`
+
   // ── Finalize ──
   stage.style.height = `${y}px`
   hideUnused()
 }
 
-// ─── Init & events ─────────────────────────────────────────────────────────────
+// ─── Dragging ──────────────────────────────────────────────────────────────────
 
-render()
+let dragging = false
+let dragOffsetX = 0
+let dragOffsetY = 0
+let renderScheduled = false
 
-let scheduled = false
-window.addEventListener('resize', () => {
-  if (scheduled) return
-  scheduled = true
+function scheduleRender(): void {
+  if (renderScheduled) return
+  renderScheduled = true
   requestAnimationFrame(() => {
-    scheduled = false
+    renderScheduled = false
     render()
   })
+}
+
+// Set initial image position (right side of abstract area)
+function setInitialImagePosition(): void {
+  const stageWidth = stage.clientWidth
+  const contentWidth = Math.min(MAX_CONTENT_WIDTH, stageWidth - MIN_MARGIN * 2)
+  const marginLeft = Math.round((stageWidth - contentWidth) / 2)
+  imageObs.x = marginLeft + contentWidth - imageObs.width + 10
+  imageObs.y = 340
+}
+
+blobImg.addEventListener('mousedown', (e: MouseEvent) => {
+  dragging = true
+  const stageRect = stage.getBoundingClientRect()
+  dragOffsetX = e.clientX - stageRect.left - imageObs.x
+  dragOffsetY = e.clientY - stageRect.top - imageObs.y
+  blobImg.style.cursor = 'grabbing'
+  e.preventDefault()
 })
+
+document.addEventListener('mousemove', (e: MouseEvent) => {
+  if (!dragging) return
+  const stageRect = stage.getBoundingClientRect()
+  imageObs.x = Math.round(e.clientX - stageRect.left - dragOffsetX)
+  imageObs.y = Math.round(e.clientY - stageRect.top - dragOffsetY)
+  scheduleRender()
+})
+
+document.addEventListener('mouseup', () => {
+  if (!dragging) return
+  dragging = false
+  blobImg.style.cursor = 'grab'
+})
+
+// Touch support
+blobImg.addEventListener('touchstart', (e: TouchEvent) => {
+  const touch = e.touches[0]!
+  dragging = true
+  const stageRect = stage.getBoundingClientRect()
+  dragOffsetX = touch.clientX - stageRect.left - imageObs.x
+  dragOffsetY = touch.clientY - stageRect.top - imageObs.y
+  e.preventDefault()
+}, { passive: false })
+
+document.addEventListener('touchmove', (e: TouchEvent) => {
+  if (!dragging) return
+  const touch = e.touches[0]!
+  const stageRect = stage.getBoundingClientRect()
+  imageObs.x = Math.round(touch.clientX - stageRect.left - dragOffsetX)
+  imageObs.y = Math.round(touch.clientY - stageRect.top - dragOffsetY)
+  scheduleRender()
+  e.preventDefault()
+}, { passive: false })
+
+document.addEventListener('touchend', () => {
+  dragging = false
+})
+
+// ─── Init ──────────────────────────────────────────────────────────────────────
+
+setInitialImagePosition()
+render()
+
+window.addEventListener('resize', scheduleRender)

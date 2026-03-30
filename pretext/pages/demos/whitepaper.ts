@@ -2,8 +2,9 @@
   Whitepaper page for "Confidential Data Rails" — laid out with Pretext.
 
   All body text (abstract, introduction) is measured and line-broken by Pretext's
-  layoutNextLine(). Draggable images act as obstacles — text reflows around
-  BOTH sides of them live as you drag.
+  layoutNextLine(). A draggable image acts as an obstacle — text reflows around
+  BOTH sides of it live as you drag, splitting lines in half when the image is
+  in the center.
 */
 import {
   prepareWithSegments,
@@ -33,9 +34,9 @@ const INTRO_P1 = `Earlier this year, Story[1] was launched as a scalable layer 1
 
 const INTRO_P2 = `Story uses a novel multi-core architecture where a main EVM-compatible core automatically triggers a collection of specialized cores for enhanced performance. For instance, the IP Core, the first specialized core on Story, handles IP registration, licensing, and tracking derivative works through large and complex IP webs with thousands of connections. It`
 
-// ─── Images ───────────────────────────────────────────────────────────────────
+// ─── Blob image ───────────────────────────────────────────────────────────────
 
-const IMAGE_SRCS = ['ippy.png', 'ippy2.png']
+const BLOB_IMAGE_SRC = 'ippy.png'
 const DISPLAY_WIDTH = 140
 
 // ─── Typography ────────────────────────────────────────────────────────────────
@@ -51,9 +52,7 @@ const MIN_SLOT_WIDTH = 40
 // ─── Obstacle state ────────────────────────────────────────────────────────────
 
 type Obstacle = { x: number; y: number; width: number; height: number }
-const obstacles: Obstacle[] = IMAGE_SRCS.map(() => ({
-  x: 0, y: 0, width: DISPLAY_WIDTH, height: DISPLAY_WIDTH,
-}))
+const imageObs: Obstacle = { x: 0, y: 0, width: DISPLAY_WIDTH, height: DISPLAY_WIDTH }
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -66,15 +65,11 @@ const stage = document.getElementById('stage')!
 const linePool: HTMLElement[] = []
 let poolCursor = 0
 
-// Create draggable images
-const blobImgs: HTMLImageElement[] = IMAGE_SRCS.map((src) => {
-  const img = document.createElement('img')
-  img.src = src
-  img.className = 'wp-blob'
-  img.draggable = false
-  stage.appendChild(img)
-  return img
-})
+const blobImg = document.createElement('img')
+blobImg.src = BLOB_IMAGE_SRC
+blobImg.className = 'wp-blob'
+blobImg.draggable = false
+stage.appendChild(blobImg)
 
 function acquire(tag: string, className: string): HTMLElement {
   let el: HTMLElement
@@ -112,7 +107,7 @@ function placeEl(el: HTMLElement, x: number, y: number, width: number): HTMLElem
   return el
 }
 
-// ─── Multi-slot line layout (text flows on BOTH sides of ALL obstacles) ────────
+// ─── Multi-slot line layout (text flows on BOTH sides of obstacle) ─────────────
 
 function getSlotsForLine(
   baseX: number,
@@ -120,50 +115,45 @@ function getSlotsForLine(
   lineHeight: number,
   fullWidth: number,
 ): Slot[] {
+  const left = baseX
+  const right = baseX + fullWidth
+  const obs = imageObs
   const bandTop = y
   const bandBottom = y + lineHeight
 
-  // Start with one full-width slot, then carve out each obstacle
-  let slots: Slot[] = [{ x: baseX, width: fullWidth }]
-
-  for (const obs of obstacles) {
-    if (
-      obs.width <= 0 ||
-      bandBottom <= obs.y - IMAGE_PADDING ||
-      bandTop >= obs.y + obs.height + IMAGE_PADDING
-    ) {
-      continue // this obstacle doesn't overlap this line band
-    }
-
-    const obsLeft = obs.x - IMAGE_PADDING
-    const obsRight = obs.x + obs.width + IMAGE_PADDING
-
-    // Carve this obstacle out of all current slots
-    const newSlots: Slot[] = []
-    for (const slot of slots) {
-      const slotRight = slot.x + slot.width
-
-      // No horizontal overlap
-      if (obsRight <= slot.x || obsLeft >= slotRight) {
-        newSlots.push(slot)
-        continue
-      }
-
-      // Left fragment
-      const leftWidth = obsLeft - slot.x
-      if (leftWidth >= MIN_SLOT_WIDTH) {
-        newSlots.push({ x: slot.x, width: leftWidth })
-      }
-
-      // Right fragment
-      const rightWidth = slotRight - obsRight
-      if (rightWidth >= MIN_SLOT_WIDTH) {
-        newSlots.push({ x: obsRight, width: rightWidth })
-      }
-    }
-    slots = newSlots
+  // No vertical overlap with obstacle — full width
+  if (
+    obs.width <= 0 ||
+    bandBottom <= obs.y - IMAGE_PADDING ||
+    bandTop >= obs.y + obs.height + IMAGE_PADDING
+  ) {
+    return [{ x: left, width: right - left }]
   }
 
+  const obsLeft = obs.x - IMAGE_PADDING
+  const obsRight = obs.x + obs.width + IMAGE_PADDING
+
+  // Obstacle is entirely outside the content area
+  if (obsRight <= left || obsLeft >= right) {
+    return [{ x: left, width: right - left }]
+  }
+
+  const slots: Slot[] = []
+
+  // Left slot (content left edge → obstacle left edge)
+  const leftSlotWidth = obsLeft - left
+  if (leftSlotWidth >= MIN_SLOT_WIDTH) {
+    slots.push({ x: left, width: leftSlotWidth })
+  }
+
+  // Right slot (obstacle right edge → content right edge)
+  const rightSlotWidth = right - obsRight
+  if (rightSlotWidth >= MIN_SLOT_WIDTH) {
+    slots.push({ x: obsRight, width: rightSlotWidth })
+  }
+
+  // If obstacle covers nearly everything, return whatever we found
+  // If nothing viable, return empty (line will be skipped)
   return slots
 }
 
@@ -185,6 +175,7 @@ function layoutParagraph(
     const slots = getSlotsForLine(baseX, y, lineHeight, fullWidth)
 
     if (slots.length === 0) {
+      // Obstacle covers the entire line band — skip down
       y += lineHeight
       continue
     }
@@ -216,6 +207,7 @@ function layoutParagraph(
     }
 
     if (!anyFilled && !done) {
+      // Couldn't fit text in any slot on this line
       y += lineHeight
       continue
     }
@@ -245,21 +237,25 @@ function render(): void {
 
   let y = 52
 
+  // ── Title (italic, centered) ──
   const titleEl = acquire('div', 'wp-title')
   titleEl.textContent = TITLE
   placeEl(titleEl, marginLeft, y, contentWidth)
   y += 42
 
+  // ── Subtitle (centered) ──
   const subtitleEl = acquire('div', 'wp-subtitle')
   subtitleEl.textContent = SUBTITLE
   placeEl(subtitleEl, marginLeft, y, contentWidth)
   y += 42
 
+  // ── Version (centered) ──
   const versionEl = acquire('div', 'wp-version')
   versionEl.textContent = VERSION
   placeEl(versionEl, marginLeft, y, contentWidth)
   y += 48
 
+  // ── Authors (3 columns × 2 rows) ──
   const colWidth = Math.floor(contentWidth / 3)
   for (let i = 0; i < AUTHORS.length; i++) {
     const col = i % 3
@@ -277,11 +273,13 @@ function render(): void {
   }
   y += 2 * 44 + 16
 
+  // ── Abstract header (bold, centered) ──
   const abstractHeader = acquire('div', 'wp-abstract-header')
   abstractHeader.textContent = 'Abstract'
   placeEl(abstractHeader, marginLeft, y, contentWidth)
   y += 30
 
+  // ── Abstract body (Pretext-powered, multi-slot) ──
   const absResult = layoutParagraph(
     preparedAbstract, marginLeft, y, contentWidth, BODY_LINE_HEIGHT, PARAGRAPH_INDENT,
   )
@@ -294,6 +292,7 @@ function render(): void {
   }
   y = absResult.endY + 32
 
+  // ── Section 1: Introduction ──
   const secNumEl = acquire('span', 'wp-section-number')
   secNumEl.textContent = '1'
   secNumEl.style.position = 'absolute'
@@ -307,6 +306,7 @@ function render(): void {
   secTitleEl.style.top = `${y}px`
   y += 38
 
+  // ── Intro paragraph 1 (no indent — first after heading) ──
   const intro1Result = layoutParagraph(
     preparedIntro1, marginLeft, y, contentWidth, BODY_LINE_HEIGHT, 0,
   )
@@ -319,6 +319,7 @@ function render(): void {
   }
   y = intro1Result.endY
 
+  // ── Intro paragraph 2 (indented) ──
   const intro2Result = layoutParagraph(
     preparedIntro2, marginLeft, y, contentWidth, BODY_LINE_HEIGHT, PARAGRAPH_INDENT,
   )
@@ -331,28 +332,26 @@ function render(): void {
   }
   y = intro2Result.endY + 40
 
+  // ── Page number ──
   const pageNumEl = acquire('div', 'wp-page-number')
   pageNumEl.textContent = '1'
   placeEl(pageNumEl, marginLeft, y, contentWidth)
   y += 40
 
-  // Update all image positions
-  for (let i = 0; i < blobImgs.length; i++) {
-    const obs = obstacles[i]
-    const img = blobImgs[i]
-    img.style.left = `${obs.x}px`
-    img.style.top = `${obs.y}px`
-    img.style.width = `${obs.width}px`
-    img.style.height = `${obs.height}px`
-  }
+  // ── Update blob image position ──
+  blobImg.style.left = `${imageObs.x}px`
+  blobImg.style.top = `${imageObs.y}px`
+  blobImg.style.width = `${imageObs.width}px`
+  blobImg.style.height = `${imageObs.height}px`
 
+  // ── Finalize ──
   stage.style.height = `${y}px`
   hideUnused()
 }
 
 // ─── Dragging ──────────────────────────────────────────────────────────────────
 
-let dragIndex = -1
+let dragging = false
 let dragOffsetX = 0
 let dragOffsetY = 0
 let renderScheduled = false
@@ -366,98 +365,81 @@ function scheduleRender(): void {
   })
 }
 
-function setInitialPositions(): void {
+function setInitialImagePosition(): void {
   const stageWidth = stage.clientWidth
   const contentWidth = Math.min(MAX_CONTENT_WIDTH, stageWidth - MIN_MARGIN * 2)
   const marginLeft = Math.round((stageWidth - contentWidth) / 2)
-
-  // ippy: right side of abstract
-  obstacles[0].x = marginLeft + contentWidth - obstacles[0].width - 20
-  obstacles[0].y = 380
-
-  // ippy2: left side, lower down
-  if (obstacles.length > 1) {
-    obstacles[1].x = marginLeft + 10
-    obstacles[1].y = 560
-  }
+  // Place in the center-right of the abstract area
+  imageObs.x = marginLeft + contentWidth - imageObs.width - 20
+  imageObs.y = 380
 }
 
-// Mouse drag for each image
-for (let i = 0; i < blobImgs.length; i++) {
-  blobImgs[i].addEventListener('mousedown', (e: MouseEvent) => {
-    dragIndex = i
-    const stageRect = stage.getBoundingClientRect()
-    dragOffsetX = e.clientX - stageRect.left - obstacles[i].x
-    dragOffsetY = e.clientY - stageRect.top - obstacles[i].y
-    e.preventDefault()
-  })
-
-  blobImgs[i].addEventListener('touchstart', (e: TouchEvent) => {
-    const touch = e.touches[0]!
-    dragIndex = i
-    const stageRect = stage.getBoundingClientRect()
-    dragOffsetX = touch.clientX - stageRect.left - obstacles[i].x
-    dragOffsetY = touch.clientY - stageRect.top - obstacles[i].y
-    e.preventDefault()
-  }, { passive: false })
-}
+blobImg.addEventListener('mousedown', (e: MouseEvent) => {
+  dragging = true
+  const stageRect = stage.getBoundingClientRect()
+  dragOffsetX = e.clientX - stageRect.left - imageObs.x
+  dragOffsetY = e.clientY - stageRect.top - imageObs.y
+  e.preventDefault()
+})
 
 document.addEventListener('mousemove', (e: MouseEvent) => {
-  if (dragIndex < 0) return
+  if (!dragging) return
   const stageRect = stage.getBoundingClientRect()
-  obstacles[dragIndex].x = Math.round(e.clientX - stageRect.left - dragOffsetX)
-  obstacles[dragIndex].y = Math.round(e.clientY - stageRect.top - dragOffsetY)
+  imageObs.x = Math.round(e.clientX - stageRect.left - dragOffsetX)
+  imageObs.y = Math.round(e.clientY - stageRect.top - dragOffsetY)
   scheduleRender()
 })
 
 document.addEventListener('mouseup', () => {
-  dragIndex = -1
+  if (!dragging) return
+  dragging = false
 })
 
+// Touch support
+blobImg.addEventListener('touchstart', (e: TouchEvent) => {
+  const touch = e.touches[0]!
+  dragging = true
+  const stageRect = stage.getBoundingClientRect()
+  dragOffsetX = touch.clientX - stageRect.left - imageObs.x
+  dragOffsetY = touch.clientY - stageRect.top - imageObs.y
+  e.preventDefault()
+}, { passive: false })
+
 document.addEventListener('touchmove', (e: TouchEvent) => {
-  if (dragIndex < 0) return
+  if (!dragging) return
   const touch = e.touches[0]!
   const stageRect = stage.getBoundingClientRect()
-  obstacles[dragIndex].x = Math.round(touch.clientX - stageRect.left - dragOffsetX)
-  obstacles[dragIndex].y = Math.round(touch.clientY - stageRect.top - dragOffsetY)
+  imageObs.x = Math.round(touch.clientX - stageRect.left - dragOffsetX)
+  imageObs.y = Math.round(touch.clientY - stageRect.top - dragOffsetY)
   scheduleRender()
   e.preventDefault()
 }, { passive: false })
 
 document.addEventListener('touchend', () => {
-  dragIndex = -1
+  dragging = false
 })
 
 // ─── Init ──────────────────────────────────────────────────────────────────────
 
-let imagesLoaded = 0
-
-function onImageReady(index: number): void {
-  const img = blobImgs[index]
-  if (img.naturalWidth > 0 && img.naturalHeight > 0) {
-    const aspect = img.naturalHeight / img.naturalWidth
-    obstacles[index].width = DISPLAY_WIDTH
-    obstacles[index].height = Math.round(DISPLAY_WIDTH * aspect)
+function initAfterImageLoad(): void {
+  if (blobImg.naturalWidth > 0 && blobImg.naturalHeight > 0) {
+    const aspect = blobImg.naturalHeight / blobImg.naturalWidth
+    imageObs.width = DISPLAY_WIDTH
+    imageObs.height = Math.round(DISPLAY_WIDTH * aspect)
   }
-  imagesLoaded++
-  if (imagesLoaded >= blobImgs.length) {
-    setInitialPositions()
-    render()
-  }
+  setInitialImagePosition()
+  render()
 }
 
-for (let i = 0; i < blobImgs.length; i++) {
-  const img = blobImgs[i]
-  if (img.complete) {
-    onImageReady(i)
-  } else {
-    img.addEventListener('load', () => onImageReady(i))
-    img.addEventListener('error', () => {
-      obstacles[i].width = 0
-      obstacles[i].height = 0
-      onImageReady(i)
-    })
-  }
+if (blobImg.complete && blobImg.naturalWidth > 0) {
+  initAfterImageLoad()
+} else {
+  blobImg.addEventListener('load', initAfterImageLoad)
+  blobImg.addEventListener('error', () => {
+    imageObs.width = 0
+    imageObs.height = 0
+    render()
+  })
 }
 
 window.addEventListener('resize', scheduleRender)

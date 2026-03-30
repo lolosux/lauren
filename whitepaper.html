@@ -2298,7 +2298,7 @@ var AUTHORS = [
 var ABSTRACT_TEXT = `We introduce Confidential Data Rails (CDR), a secure and programmable on-chain storage and transfer protocol for private data. This novel core functionality of Story allows users to securely upload confidential data to the network and define on-chain access conditions. The data then becomes automatically accessible to other users who meet those conditions. The CDR protocol is powered by a decentralized collection of trusted execution environments (TEEs) that operate off-chain and are managed and synchronized by a smart contract on Story. Built on the same secure foundation of Story, this architecture ensures complete data confidentiality while offering flexibility through programmable access control and decentralized infrastructure. IP Vault is one of the first applications of this powerful protocol. It allows IP owners to securely attach confidential data to their registered on-chain IP assets, data that becomes automatically accessible to license holders without further IP owner involvement. IP Vault combined with Story’s existing powerful infrastructure for IP, streamlines the entire journey of IP assets, from registration and licensing to monetization and automatic confidential data delivery. This integrated ecosystem makes IP assets truly programmable and creates an open, composable marketplace for IP data assets (AI datasets, API keys, …) with privacy preserved throughout the lifecycle.`;
 var INTRO_P1 = `Earlier this year, Story[1] was launched as a scalable layer 1 blockchain designed to help creators register, manage and monetize their intellectual property (IP), such as art, music, data and AI models, as programmable assets on the chain.`;
 var INTRO_P2 = `Story uses a novel multi-core architecture where a main EVM-compatible core automatically triggers a collection of specialized cores for enhanced performance. For instance, the IP Core, the first specialized core on Story, handles IP registration, licensing, and tracking derivative works through large and complex IP webs with thousands of connections. It`;
-var BLOB_IMAGE_SRC = "ippy.png";
+var IMAGE_SRCS = ["ippy.png", "ippy2.png"];
 var DISPLAY_WIDTH = 140;
 var BODY_FONT = '16px "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif';
 var BODY_LINE_HEIGHT = 23;
@@ -2307,15 +2307,23 @@ var MAX_CONTENT_WIDTH = 540;
 var MIN_MARGIN = 48;
 var IMAGE_PADDING = 14;
 var MIN_SLOT_WIDTH = 40;
-var imageObs = { x: 0, y: 0, width: DISPLAY_WIDTH, height: DISPLAY_WIDTH };
+var obstacles = IMAGE_SRCS.map(() => ({
+  x: 0,
+  y: 0,
+  width: DISPLAY_WIDTH,
+  height: DISPLAY_WIDTH
+}));
 var stage = document.getElementById("stage");
 var linePool = [];
 var poolCursor = 0;
-var blobImg = document.createElement("img");
-blobImg.src = BLOB_IMAGE_SRC;
-blobImg.className = "wp-blob";
-blobImg.draggable = false;
-stage.appendChild(blobImg);
+var blobImgs = IMAGE_SRCS.map((src) => {
+  const img = document.createElement("img");
+  img.src = src;
+  img.className = "wp-blob";
+  img.draggable = false;
+  stage.appendChild(img);
+  return img;
+});
 function acquire(tag, className) {
   let el;
   if (poolCursor < linePool.length) {
@@ -2350,27 +2358,32 @@ function placeEl(el, x, y, width) {
   return el;
 }
 function getSlotsForLine(baseX, y, lineHeight, fullWidth) {
-  const left = baseX;
-  const right = baseX + fullWidth;
-  const obs = imageObs;
   const bandTop = y;
   const bandBottom = y + lineHeight;
-  if (obs.width <= 0 || bandBottom <= obs.y - IMAGE_PADDING || bandTop >= obs.y + obs.height + IMAGE_PADDING) {
-    return [{ x: left, width: right - left }];
-  }
-  const obsLeft = obs.x - IMAGE_PADDING;
-  const obsRight = obs.x + obs.width + IMAGE_PADDING;
-  if (obsRight <= left || obsLeft >= right) {
-    return [{ x: left, width: right - left }];
-  }
-  const slots = [];
-  const leftSlotWidth = obsLeft - left;
-  if (leftSlotWidth >= MIN_SLOT_WIDTH) {
-    slots.push({ x: left, width: leftSlotWidth });
-  }
-  const rightSlotWidth = right - obsRight;
-  if (rightSlotWidth >= MIN_SLOT_WIDTH) {
-    slots.push({ x: obsRight, width: rightSlotWidth });
+  let slots = [{ x: baseX, width: fullWidth }];
+  for (const obs of obstacles) {
+    if (obs.width <= 0 || bandBottom <= obs.y - IMAGE_PADDING || bandTop >= obs.y + obs.height + IMAGE_PADDING) {
+      continue;
+    }
+    const obsLeft = obs.x - IMAGE_PADDING;
+    const obsRight = obs.x + obs.width + IMAGE_PADDING;
+    const newSlots = [];
+    for (const slot of slots) {
+      const slotRight = slot.x + slot.width;
+      if (obsRight <= slot.x || obsLeft >= slotRight) {
+        newSlots.push(slot);
+        continue;
+      }
+      const leftWidth = obsLeft - slot.x;
+      if (leftWidth >= MIN_SLOT_WIDTH) {
+        newSlots.push({ x: slot.x, width: leftWidth });
+      }
+      const rightWidth = slotRight - obsRight;
+      if (rightWidth >= MIN_SLOT_WIDTH) {
+        newSlots.push({ x: obsRight, width: rightWidth });
+      }
+    }
+    slots = newSlots;
   }
   return slots;
 }
@@ -2498,14 +2511,18 @@ function render() {
   pageNumEl.textContent = "1";
   placeEl(pageNumEl, marginLeft, y, contentWidth);
   y += 40;
-  blobImg.style.left = `${imageObs.x}px`;
-  blobImg.style.top = `${imageObs.y}px`;
-  blobImg.style.width = `${imageObs.width}px`;
-  blobImg.style.height = `${imageObs.height}px`;
+  for (let i = 0;i < blobImgs.length; i++) {
+    const obs = obstacles[i];
+    const img = blobImgs[i];
+    img.style.left = `${obs.x}px`;
+    img.style.top = `${obs.y}px`;
+    img.style.width = `${obs.width}px`;
+    img.style.height = `${obs.height}px`;
+  }
   stage.style.height = `${y}px`;
   hideUnused();
 }
-var dragging = false;
+var dragIndex = -1;
 var dragOffsetX = 0;
 var dragOffsetY = 0;
 var renderScheduled = false;
@@ -2518,72 +2535,84 @@ function scheduleRender() {
     render();
   });
 }
-function setInitialImagePosition() {
+function setInitialPositions() {
   const stageWidth = stage.clientWidth;
   const contentWidth = Math.min(MAX_CONTENT_WIDTH, stageWidth - MIN_MARGIN * 2);
   const marginLeft = Math.round((stageWidth - contentWidth) / 2);
-  imageObs.x = marginLeft + contentWidth - imageObs.width - 20;
-  imageObs.y = 380;
+  obstacles[0].x = marginLeft + contentWidth - obstacles[0].width - 20;
+  obstacles[0].y = 380;
+  if (obstacles.length > 1) {
+    obstacles[1].x = marginLeft + 10;
+    obstacles[1].y = 560;
+  }
 }
-blobImg.addEventListener("mousedown", (e) => {
-  dragging = true;
-  const stageRect = stage.getBoundingClientRect();
-  dragOffsetX = e.clientX - stageRect.left - imageObs.x;
-  dragOffsetY = e.clientY - stageRect.top - imageObs.y;
-  e.preventDefault();
-});
+for (let i = 0;i < blobImgs.length; i++) {
+  blobImgs[i].addEventListener("mousedown", (e) => {
+    dragIndex = i;
+    const stageRect = stage.getBoundingClientRect();
+    dragOffsetX = e.clientX - stageRect.left - obstacles[i].x;
+    dragOffsetY = e.clientY - stageRect.top - obstacles[i].y;
+    e.preventDefault();
+  });
+  blobImgs[i].addEventListener("touchstart", (e) => {
+    const touch = e.touches[0];
+    dragIndex = i;
+    const stageRect = stage.getBoundingClientRect();
+    dragOffsetX = touch.clientX - stageRect.left - obstacles[i].x;
+    dragOffsetY = touch.clientY - stageRect.top - obstacles[i].y;
+    e.preventDefault();
+  }, { passive: false });
+}
 document.addEventListener("mousemove", (e) => {
-  if (!dragging)
+  if (dragIndex < 0)
     return;
   const stageRect = stage.getBoundingClientRect();
-  imageObs.x = Math.round(e.clientX - stageRect.left - dragOffsetX);
-  imageObs.y = Math.round(e.clientY - stageRect.top - dragOffsetY);
+  obstacles[dragIndex].x = Math.round(e.clientX - stageRect.left - dragOffsetX);
+  obstacles[dragIndex].y = Math.round(e.clientY - stageRect.top - dragOffsetY);
   scheduleRender();
 });
 document.addEventListener("mouseup", () => {
-  if (!dragging)
-    return;
-  dragging = false;
+  dragIndex = -1;
 });
-blobImg.addEventListener("touchstart", (e) => {
-  const touch = e.touches[0];
-  dragging = true;
-  const stageRect = stage.getBoundingClientRect();
-  dragOffsetX = touch.clientX - stageRect.left - imageObs.x;
-  dragOffsetY = touch.clientY - stageRect.top - imageObs.y;
-  e.preventDefault();
-}, { passive: false });
 document.addEventListener("touchmove", (e) => {
-  if (!dragging)
+  if (dragIndex < 0)
     return;
   const touch = e.touches[0];
   const stageRect = stage.getBoundingClientRect();
-  imageObs.x = Math.round(touch.clientX - stageRect.left - dragOffsetX);
-  imageObs.y = Math.round(touch.clientY - stageRect.top - dragOffsetY);
+  obstacles[dragIndex].x = Math.round(touch.clientX - stageRect.left - dragOffsetX);
+  obstacles[dragIndex].y = Math.round(touch.clientY - stageRect.top - dragOffsetY);
   scheduleRender();
   e.preventDefault();
 }, { passive: false });
 document.addEventListener("touchend", () => {
-  dragging = false;
+  dragIndex = -1;
 });
-function initAfterImageLoad() {
-  if (blobImg.naturalWidth > 0 && blobImg.naturalHeight > 0) {
-    const aspect = blobImg.naturalHeight / blobImg.naturalWidth;
-    imageObs.width = DISPLAY_WIDTH;
-    imageObs.height = Math.round(DISPLAY_WIDTH * aspect);
+var imagesLoaded = 0;
+function onImageReady(index) {
+  const img = blobImgs[index];
+  if (img.naturalWidth > 0 && img.naturalHeight > 0) {
+    const aspect = img.naturalHeight / img.naturalWidth;
+    obstacles[index].width = DISPLAY_WIDTH;
+    obstacles[index].height = Math.round(DISPLAY_WIDTH * aspect);
   }
-  setInitialImagePosition();
-  render();
-}
-if (blobImg.complete && blobImg.naturalWidth > 0) {
-  initAfterImageLoad();
-} else {
-  blobImg.addEventListener("load", initAfterImageLoad);
-  blobImg.addEventListener("error", () => {
-    imageObs.width = 0;
-    imageObs.height = 0;
+  imagesLoaded++;
+  if (imagesLoaded >= blobImgs.length) {
+    setInitialPositions();
     render();
-  });
+  }
+}
+for (let i = 0;i < blobImgs.length; i++) {
+  const img = blobImgs[i];
+  if (img.complete && img.naturalWidth > 0) {
+    onImageReady(i);
+  } else {
+    img.addEventListener("load", () => onImageReady(i));
+    img.addEventListener("error", () => {
+      obstacles[i].width = 0;
+      obstacles[i].height = 0;
+      onImageReady(i);
+    });
+  }
 }
 window.addEventListener("resize", scheduleRender);
     </script>

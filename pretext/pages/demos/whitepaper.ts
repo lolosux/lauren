@@ -36,8 +36,7 @@ const INTRO_P2 = `Story uses a novel multi-core architecture where a main EVM-co
 // ─── Blob image ───────────────────────────────────────────────────────────────
 
 const BLOB_IMAGE_SRC = 'ippy.png'
-const IMAGE_WIDTH = 150
-const IMAGE_HEIGHT = 120
+const DISPLAY_WIDTH = 140
 
 // ─── Typography ────────────────────────────────────────────────────────────────
 
@@ -46,12 +45,12 @@ const BODY_LINE_HEIGHT = 23
 const PARAGRAPH_INDENT = 28
 const MAX_CONTENT_WIDTH = 540
 const MIN_MARGIN = 48
-const IMAGE_PADDING = 12
+const IMAGE_PADDING = 14
 
 // ─── Obstacle state ────────────────────────────────────────────────────────────
 
 type Obstacle = { x: number; y: number; width: number; height: number }
-const imageObs: Obstacle = { x: 0, y: 0, width: IMAGE_WIDTH, height: IMAGE_HEIGHT }
+const imageObs: Obstacle = { x: 0, y: 0, width: DISPLAY_WIDTH, height: DISPLAY_WIDTH }
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -329,14 +328,13 @@ function scheduleRender(): void {
   })
 }
 
-// Set initial image position: right side of abstract text area
 function setInitialImagePosition(): void {
   const stageWidth = stage.clientWidth
   const contentWidth = Math.min(MAX_CONTENT_WIDTH, stageWidth - MIN_MARGIN * 2)
   const marginLeft = Math.round((stageWidth - contentWidth) / 2)
-  // Place on the right side, within the content bounds
-  imageObs.x = marginLeft + contentWidth - imageObs.width
-  imageObs.y = 380
+  // Place on the right side, clearly overlapping the abstract text
+  imageObs.x = marginLeft + contentWidth - imageObs.width + 5
+  imageObs.y = 360
 }
 
 blobImg.addEventListener('mousedown', (e: MouseEvent) => {
@@ -388,7 +386,27 @@ document.addEventListener('touchend', () => {
 
 // ─── Init ──────────────────────────────────────────────────────────────────────
 
-setInitialImagePosition()
-render()
+// Wait for the image to load so we know its real dimensions
+function initAfterImageLoad(): void {
+  if (blobImg.naturalWidth > 0 && blobImg.naturalHeight > 0) {
+    const aspect = blobImg.naturalHeight / blobImg.naturalWidth
+    imageObs.width = DISPLAY_WIDTH
+    imageObs.height = Math.round(DISPLAY_WIDTH * aspect)
+  }
+  setInitialImagePosition()
+  render()
+}
+
+if (blobImg.complete && blobImg.naturalWidth > 0) {
+  initAfterImageLoad()
+} else {
+  blobImg.addEventListener('load', initAfterImageLoad)
+  // If image fails to load, still render the page without it
+  blobImg.addEventListener('error', () => {
+    imageObs.width = 0
+    imageObs.height = 0
+    render()
+  })
+}
 
 window.addEventListener('resize', scheduleRender)

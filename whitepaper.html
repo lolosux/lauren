@@ -19,9 +19,7 @@
       .wp-section-title { position: absolute; font-size: 21px; font-weight: bold; line-height: 28px; }
       .wp-body-line { position: absolute; white-space: pre; font-size: 16px; line-height: 23px; font-family: "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif; user-select: text; cursor: text; }
       .wp-page-number { position: absolute; font-size: 16px; line-height: 20px; text-align: center; }
-      .wp-blob { position: absolute; cursor: grab; z-index: 10; user-select: none; -webkit-user-select: none; touch-action: none; transition: filter 0.15s ease; }
-      .wp-blob:hover { filter: drop-shadow(0 4px 12px rgba(0,0,0,0.15)); }
-      .wp-blob:active { cursor: grabbing; }
+      .wp-blob { position: absolute; cursor: grab; z-index: 10; user-select: none; -webkit-user-select: none; touch-action: none; }
     </style>
   </head>
   <body>
@@ -2301,15 +2299,14 @@ var ABSTRACT_TEXT = `We introduce Confidential Data Rails (CDR), a secure and pr
 var INTRO_P1 = `Earlier this year, Story[1] was launched as a scalable layer 1 blockchain designed to help creators register, manage and monetize their intellectual property (IP), such as art, music, data and AI models, as programmable assets on the chain.`;
 var INTRO_P2 = `Story uses a novel multi-core architecture where a main EVM-compatible core automatically triggers a collection of specialized cores for enhanced performance. For instance, the IP Core, the first specialized core on Story, handles IP registration, licensing, and tracking derivative works through large and complex IP webs with thousands of connections. It`;
 var BLOB_IMAGE_SRC = "ippy.png";
-var IMAGE_WIDTH = 150;
-var IMAGE_HEIGHT = 120;
+var DISPLAY_WIDTH = 140;
 var BODY_FONT = '16px "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif';
 var BODY_LINE_HEIGHT = 23;
 var PARAGRAPH_INDENT = 28;
 var MAX_CONTENT_WIDTH = 540;
 var MIN_MARGIN = 48;
-var IMAGE_PADDING = 12;
-var imageObs = { x: 0, y: 0, width: IMAGE_WIDTH, height: IMAGE_HEIGHT };
+var IMAGE_PADDING = 14;
+var imageObs = { x: 0, y: 0, width: DISPLAY_WIDTH, height: DISPLAY_WIDTH };
 var stage = document.getElementById("stage");
 var linePool = [];
 var poolCursor = 0;
@@ -2505,8 +2502,8 @@ function setInitialImagePosition() {
   const stageWidth = stage.clientWidth;
   const contentWidth = Math.min(MAX_CONTENT_WIDTH, stageWidth - MIN_MARGIN * 2);
   const marginLeft = Math.round((stageWidth - contentWidth) / 2);
-  imageObs.x = marginLeft + contentWidth - imageObs.width;
-  imageObs.y = 380;
+  imageObs.x = marginLeft + contentWidth - imageObs.width + 5;
+  imageObs.y = 360;
 }
 blobImg.addEventListener("mousedown", (e) => {
   dragging = true;
@@ -2551,8 +2548,25 @@ document.addEventListener("touchmove", (e) => {
 document.addEventListener("touchend", () => {
   dragging = false;
 });
-setInitialImagePosition();
-render();
+function initAfterImageLoad() {
+  if (blobImg.naturalWidth > 0 && blobImg.naturalHeight > 0) {
+    const aspect = blobImg.naturalHeight / blobImg.naturalWidth;
+    imageObs.width = DISPLAY_WIDTH;
+    imageObs.height = Math.round(DISPLAY_WIDTH * aspect);
+  }
+  setInitialImagePosition();
+  render();
+}
+if (blobImg.complete && blobImg.naturalWidth > 0) {
+  initAfterImageLoad();
+} else {
+  blobImg.addEventListener("load", initAfterImageLoad);
+  blobImg.addEventListener("error", () => {
+    imageObs.width = 0;
+    imageObs.height = 0;
+    render();
+  });
+}
 window.addEventListener("resize", scheduleRender);
     </script>
   </body>

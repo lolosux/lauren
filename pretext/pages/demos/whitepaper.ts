@@ -36,7 +36,7 @@ const INTRO_P2 = `Story uses a novel multi-core architecture where a main EVM-co
 
 // ─── Blob image ───────────────────────────────────────────────────────────────
 
-const BLOB_IMAGE_SRC = 'ippy.png'
+const BLOB_IMAGE_SRC = 'ippy 3d.svg'
 const DISPLAY_WIDTH = 140
 
 // ─── Typography ────────────────────────────────────────────────────────────────

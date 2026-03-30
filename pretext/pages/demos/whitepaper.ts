@@ -56,7 +56,7 @@ const BLOB_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 220 170">
         font-family="Arial,sans-serif" fill="#555" font-weight="bold">&gt;\u0414&lt;</text>
 </svg>`
 
-const BLOB_DATA_URI = 'data:image/svg+xml;base64,' + btoa(BLOB_SVG)
+const BLOB_DATA_URI = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(BLOB_SVG)
 
 // ─── Typography ────────────────────────────────────────────────────────────────
 

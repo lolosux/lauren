@@ -36,6 +36,8 @@ const INTRO_P2 = `Story uses a novel multi-core architecture where a main EVM-co
 // ─── Blob image ───────────────────────────────────────────────────────────────
 
 const BLOB_IMAGE_SRC = 'ippy.png'
+const IMAGE_WIDTH = 150
+const IMAGE_HEIGHT = 120
 
 // ─── Typography ────────────────────────────────────────────────────────────────
 
@@ -44,13 +46,12 @@ const BODY_LINE_HEIGHT = 23
 const PARAGRAPH_INDENT = 28
 const MAX_CONTENT_WIDTH = 540
 const MIN_MARGIN = 48
-const IMAGE_PADDING = 14
+const IMAGE_PADDING = 12
 
 // ─── Obstacle state ────────────────────────────────────────────────────────────
 
 type Obstacle = { x: number; y: number; width: number; height: number }
-const imageObs: Obstacle = { x: 0, y: 0, width: 160, height: 130 }
-const obstacles: Obstacle[] = [imageObs]
+const imageObs: Obstacle = { x: 0, y: 0, width: IMAGE_WIDTH, height: IMAGE_HEIGHT }
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -116,30 +117,36 @@ function getSlot(
   let left = baseX
   let right = baseX + fullWidth
 
-  for (const obs of obstacles) {
-    const bandTop = y
-    const bandBottom = y + lineHeight
-    if (bandBottom <= obs.y - IMAGE_PADDING || bandTop >= obs.y + obs.height + IMAGE_PADDING) continue
+  const obs = imageObs
+  const bandTop = y
+  const bandBottom = y + lineHeight
 
+  // Check if this line band overlaps the obstacle vertically
+  if (bandBottom > obs.y - IMAGE_PADDING && bandTop < obs.y + obs.height + IMAGE_PADDING) {
     const obsLeft = obs.x - IMAGE_PADDING
     const obsRight = obs.x + obs.width + IMAGE_PADDING
 
-    if (obsLeft <= left) {
-      left = Math.max(left, obsRight)
-    } else if (obsRight >= right) {
+    // How much space on the left vs right of the obstacle
+    const leftSpace = Math.max(0, obsLeft - left)
+    const rightSpace = Math.max(0, right - obsRight)
+
+    if (leftSpace >= rightSpace && leftSpace > 40) {
+      // More room on the left — text goes left, obstacle clips the right
       right = Math.min(right, obsLeft)
+    } else if (rightSpace > 40) {
+      // More room on the right — text goes right, obstacle clips the left
+      left = Math.max(left, obsRight)
     } else {
-      const leftGap = obsLeft - left
-      const rightGap = right - obsRight
-      if (leftGap >= rightGap) {
-        right = obsLeft
+      // Obstacle covers nearly all the width — squeeze into whatever is bigger
+      if (leftSpace >= rightSpace) {
+        right = Math.min(right, obsLeft)
       } else {
-        left = obsRight
+        left = Math.max(left, obsRight)
       }
     }
   }
 
-  return { x: left, width: Math.max(right - left, 60) }
+  return { x: left, width: Math.max(right - left, 30) }
 }
 
 function layoutParagraph(
@@ -159,7 +166,8 @@ function layoutParagraph(
     const { x, width } = getSlot(baseX, y, lineHeight, fullWidth)
     const lineIndent = isFirst ? indent : 0
     const effectiveWidth = width - lineIndent
-    if (effectiveWidth < 40) {
+    if (effectiveWidth < 30) {
+      // Obstacle covers this line — skip down
       y += lineHeight
       continue
     }
@@ -321,13 +329,14 @@ function scheduleRender(): void {
   })
 }
 
-// Set initial image position (right side of abstract area)
+// Set initial image position: right side of abstract text area
 function setInitialImagePosition(): void {
   const stageWidth = stage.clientWidth
   const contentWidth = Math.min(MAX_CONTENT_WIDTH, stageWidth - MIN_MARGIN * 2)
   const marginLeft = Math.round((stageWidth - contentWidth) / 2)
-  imageObs.x = marginLeft + contentWidth - imageObs.width + 10
-  imageObs.y = 340
+  // Place on the right side, within the content bounds
+  imageObs.x = marginLeft + contentWidth - imageObs.width
+  imageObs.y = 380
 }
 
 blobImg.addEventListener('mousedown', (e: MouseEvent) => {

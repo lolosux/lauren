@@ -2301,14 +2301,15 @@ var ABSTRACT_TEXT = `We introduce Confidential Data Rails (CDR), a secure and pr
 var INTRO_P1 = `Earlier this year, Story[1] was launched as a scalable layer 1 blockchain designed to help creators register, manage and monetize their intellectual property (IP), such as art, music, data and AI models, as programmable assets on the chain.`;
 var INTRO_P2 = `Story uses a novel multi-core architecture where a main EVM-compatible core automatically triggers a collection of specialized cores for enhanced performance. For instance, the IP Core, the first specialized core on Story, handles IP registration, licensing, and tracking derivative works through large and complex IP webs with thousands of connections. It`;
 var BLOB_IMAGE_SRC = "ippy.png";
+var IMAGE_WIDTH = 150;
+var IMAGE_HEIGHT = 120;
 var BODY_FONT = '16px "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif';
 var BODY_LINE_HEIGHT = 23;
 var PARAGRAPH_INDENT = 28;
 var MAX_CONTENT_WIDTH = 540;
 var MIN_MARGIN = 48;
-var IMAGE_PADDING = 14;
-var imageObs = { x: 0, y: 0, width: 160, height: 130 };
-var obstacles = [imageObs];
+var IMAGE_PADDING = 12;
+var imageObs = { x: 0, y: 0, width: IMAGE_WIDTH, height: IMAGE_HEIGHT };
 var stage = document.getElementById("stage");
 var linePool = [];
 var poolCursor = 0;
@@ -2353,28 +2354,27 @@ function placeEl(el, x, y, width) {
 function getSlot(baseX, y, lineHeight, fullWidth) {
   let left = baseX;
   let right = baseX + fullWidth;
-  for (const obs of obstacles) {
-    const bandTop = y;
-    const bandBottom = y + lineHeight;
-    if (bandBottom <= obs.y - IMAGE_PADDING || bandTop >= obs.y + obs.height + IMAGE_PADDING)
-      continue;
+  const obs = imageObs;
+  const bandTop = y;
+  const bandBottom = y + lineHeight;
+  if (bandBottom > obs.y - IMAGE_PADDING && bandTop < obs.y + obs.height + IMAGE_PADDING) {
     const obsLeft = obs.x - IMAGE_PADDING;
     const obsRight = obs.x + obs.width + IMAGE_PADDING;
-    if (obsLeft <= left) {
-      left = Math.max(left, obsRight);
-    } else if (obsRight >= right) {
+    const leftSpace = Math.max(0, obsLeft - left);
+    const rightSpace = Math.max(0, right - obsRight);
+    if (leftSpace >= rightSpace && leftSpace > 40) {
       right = Math.min(right, obsLeft);
+    } else if (rightSpace > 40) {
+      left = Math.max(left, obsRight);
     } else {
-      const leftGap = obsLeft - left;
-      const rightGap = right - obsRight;
-      if (leftGap >= rightGap) {
-        right = obsLeft;
+      if (leftSpace >= rightSpace) {
+        right = Math.min(right, obsLeft);
       } else {
-        left = obsRight;
+        left = Math.max(left, obsRight);
       }
     }
   }
-  return { x: left, width: Math.max(right - left, 60) };
+  return { x: left, width: Math.max(right - left, 30) };
 }
 function layoutParagraph(prepared, baseX, startY, fullWidth, lineHeight, indent) {
   const lines = [];
@@ -2385,7 +2385,7 @@ function layoutParagraph(prepared, baseX, startY, fullWidth, lineHeight, indent)
     const { x, width } = getSlot(baseX, y, lineHeight, fullWidth);
     const lineIndent = isFirst ? indent : 0;
     const effectiveWidth = width - lineIndent;
-    if (effectiveWidth < 40) {
+    if (effectiveWidth < 30) {
       y += lineHeight;
       continue;
     }
@@ -2505,8 +2505,8 @@ function setInitialImagePosition() {
   const stageWidth = stage.clientWidth;
   const contentWidth = Math.min(MAX_CONTENT_WIDTH, stageWidth - MIN_MARGIN * 2);
   const marginLeft = Math.round((stageWidth - contentWidth) / 2);
-  imageObs.x = marginLeft + contentWidth - imageObs.width + 10;
-  imageObs.y = 340;
+  imageObs.x = marginLeft + contentWidth - imageObs.width;
+  imageObs.y = 380;
 }
 blobImg.addEventListener("mousedown", (e) => {
   dragging = true;
